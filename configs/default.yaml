@@ -1,0 +1,16 @@
+seed: 42
+data:
+  root: data
+  tile_size: 512
+  overlap: 64
+  classes: [background, building, road, water, vegetation]
+model:
+  name: unet
+  encoder: resnet34
+  pretrained: true
+train:
+  epochs: 50
+  batch_size: 8
+  lr: 3.0e-4
+  amp: true
+  loss: dice_focal

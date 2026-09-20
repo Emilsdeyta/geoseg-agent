@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "geoseg"
+version = "0.1.0"
+description = "Satellite image segmentation, change detection and agent-based geospatial analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.26",
+    "pyyaml>=6.0",
+    "pydantic>=2.5",
+]
+
+[project.optional-dependencies]
+# torch CUDA versiyasina gore ayrica qurasdirilir: https://pytorch.org/get-started/locally/
+ml = ["torch", "torchvision", "segmentation-models-pytorch", "transformers", "albumentations", "mlflow"]
+geo = ["rasterio", "geopandas", "shapely", "pyproj"]
+api = ["fastapi", "uvicorn[standard]", "httpx"]
+agent = ["anthropic"]
+export = ["onnx", "onnxruntime"]
+dev = ["pytest", "pytest-cov", "ruff", "mypy", "pre-commit", "types-PyYAML"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/geoseg"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM", "C4", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["gpu: GPU teleb edir", "slow: yavas test"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true

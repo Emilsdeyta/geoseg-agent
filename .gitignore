@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Secrets
+.env
+
+# Data & artifacts (DVC/HF ile idare olunur)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+models_ckpt/*
+!models_ckpt/.gitkeep
+mlruns/
+wandb/
+outputs/
+*.pt
+*.pth
+*.onnx
+*.tif
+*.tiff
+
+# Notebooks
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
