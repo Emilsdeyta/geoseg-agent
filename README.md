@@ -1,5 +1,7 @@
 # GeoSeg-Agent
 
+[![CI](https://github.com/Emilsdeyta/geoseg-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Emilsdeyta/geoseg-agent/actions/workflows/ci.yml)
+
 Satellite image segmentation, change detection and agent-based geospatial analysis.
 
 > Status: work in progress
@@ -12,8 +14,6 @@ python -m venv .venv
 pip install -e ".[dev,api]"
 pytest
 ```
-
-[![CI](https://github.com/Emilsdeyta/geoseg-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Emilsdeyta/geoseg-agent/actions/workflows/ci.yml)
 
 ## Results
 _TBD: mIoU / F1 table, before-after visuals, error analysis_
