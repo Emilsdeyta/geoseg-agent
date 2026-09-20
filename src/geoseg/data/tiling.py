@@ -71,7 +71,7 @@ def stitch_tiles(
         tw = min(tile.shape[1], width - x)
         acc[y : y + th, x : x + tw] += tile[:th, :tw]
         count[y : y + th, x : x + tw] += 1
-    count = np.maximum(count, 1)
+    denominator: np.ndarray = np.maximum(count, 1)
     if acc.ndim == 3:
-        count = count[..., None]
-    return acc / count
+        denominator = denominator[..., None]
+    return acc / denominator
