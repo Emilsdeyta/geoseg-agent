@@ -8,10 +8,12 @@ Satellite image segmentation, change detection and agent-based geospatial analys
 
 ```bash
 python -m venv .venv
-.venv\\Scripts\\activate      # Linux/Mac: source .venv/bin/activate
+.venv\Scripts\activate      # Linux/Mac: source .venv/bin/activate
 pip install -e ".[dev,api]"
 pytest
 ```
+
+[![CI](https://github.com/Emilsdeyta/geoseg-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Emilsdeyta/geoseg-agent/actions/workflows/ci.yml)
 
 ## Results
 _TBD: mIoU / F1 table, before-after visuals, error analysis_
