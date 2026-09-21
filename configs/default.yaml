@@ -1,16 +1,33 @@
+# Baseline: Siamese U-Net (ResNet34, ImageNet init) for binary change detection on LEVIR-CD.
+# Any value can be overridden from the CLI: --set train.epochs=5 data.root=/path/to/levir-cd
 seed: 42
+
 data:
-  root: data
-  tile_size: 512
-  overlap: 64
-  classes: [background, building, road, water, vegetation]
+  root: data/raw/levir-cd   # contains train/ val/ test/ each with A/ B/ label/
+  tile_size: 256
+  overlap: 0
+  num_workers: 2
+
 model:
-  name: unet
   encoder: resnet34
-  pretrained: true
+  encoder_weights: imagenet  # null = random init (no download)
+  fusion: diff               # diff = |f_a - f_b|, concat = [f_a, f_b]
+
 train:
   epochs: 50
   batch_size: 8
   lr: 3.0e-4
-  amp: true
-  loss: dice_focal
+  weight_decay: 1.0e-4
+  amp: true                  # mixed precision, only used on CUDA
+  loss: dice_focal           # bce | dice | focal | dice_focal
+  focal_gamma: 2.0
+  focal_alpha: null
+  threshold: 0.5
+  patience: 10               # early stopping on val F1, 0 = off
+  log_every: 100
+  limit_batches: 0           # debug: run only N batches per epoch, 0 = all
+
+logging:
+  output_dir: outputs/baseline
+  tracker: none              # none | mlflow
+  experiment: geoseg-levir-cd

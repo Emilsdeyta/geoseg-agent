@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # torch CUDA versiyasina gore ayrica qurasdirilir: https://pytorch.org/get-started/locally/
-ml = ["torch", "torchvision", "segmentation-models-pytorch", "transformers", "albumentations", "mlflow"]
+ml = ["torch>=2.3", "torchvision", "segmentation-models-pytorch", "transformers", "albumentations", "mlflow"]
 geo = ["rasterio", "geopandas", "shapely", "pyproj"]
 api = ["fastapi", "uvicorn[standard]", "httpx"]
 agent = ["anthropic"]
