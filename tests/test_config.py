@@ -53,3 +53,8 @@ def test_invalid_value_is_rejected() -> None:
 def test_malformed_override_raises() -> None:
     with pytest.raises(ValueError, match="key=value"):
         apply_overrides({}, ["train.epochs"])
+
+
+def test_cache_option_defaults_to_off_and_can_be_enabled() -> None:
+    assert load_config(DEFAULT_CONFIG).data.cache is False
+    assert load_config(DEFAULT_CONFIG, ["data.cache=true"]).data.cache is True

@@ -13,7 +13,9 @@ Files with the same name in A, B and label belong together.
 
 from __future__ import annotations
 
+import logging
 import random
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +25,8 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 from geoseg.data.tiling import compute_tile_grid, extract_tile
+
+logger = logging.getLogger(__name__)
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -40,7 +44,12 @@ class ChangeDetectionDataset(Dataset[dict[str, Any]]):
         overlap: int = 0,
         augment: bool = False,
         normalize: bool = True,
+        cache: bool = False,
     ) -> None:
+        # cache=True decodes every image once and keeps it in RAM (uint8). LEVIR-CD train is
+        # ~3 GB. Without it each tile re-decodes three 1024x1024 PNGs, which starves the GPU.
+        # With num_workers > 0 use it on Linux (fork shares the memory); on Windows every
+        # worker would get its own copy.
         self.tile_size = tile_size
         self.augment = augment
         self.normalize = normalize
@@ -66,6 +75,31 @@ class ChangeDetectionDataset(Dataset[dict[str, Any]]):
                 width, height = img.size
             for y, x in compute_tile_grid(height, width, tile_size, overlap):
                 self.index.append((name, y, x))
+
+        self._cache: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] | None = None
+        if cache:
+            self._cache = self._build_cache(names)
+
+    def _build_cache(
+        self, names: list[str]
+    ) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        start = time.perf_counter()
+        cache = {
+            name: (
+                self._load(self.dir_a / name, "RGB"),
+                self._load(self.dir_b / name, "RGB"),
+                self._load(self.dir_label / name, "L"),
+            )
+            for name in names
+        }
+        size_gb = sum(a.nbytes for triple in cache.values() for a in triple) / 1e9
+        logger.info(
+            "Cached %d image triplets (%.2f GB) in %.0fs",
+            len(cache),
+            size_gb,
+            time.perf_counter() - start,
+        )
+        return cache
 
     def __len__(self) -> int:
         return len(self.index)
@@ -103,9 +137,15 @@ class ChangeDetectionDataset(Dataset[dict[str, Any]]):
         size = self.tile_size
         # NOTE: the full image is decoded per tile. For 1024x1024 LEVIR-CD images
         # this is fast enough; pre-tile to disk if data loading becomes a bottleneck.
-        image_a = extract_tile(self._load(self.dir_a / name, "RGB"), y, x, size)
-        image_b = extract_tile(self._load(self.dir_b / name, "RGB"), y, x, size)
-        mask = extract_tile(self._load(self.dir_label / name, "L"), y, x, size)
+        if self._cache is not None:
+            full_a, full_b, full_mask = self._cache[name]
+        else:
+            full_a = self._load(self.dir_a / name, "RGB")
+            full_b = self._load(self.dir_b / name, "RGB")
+            full_mask = self._load(self.dir_label / name, "L")
+        image_a = extract_tile(full_a, y, x, size)
+        image_b = extract_tile(full_b, y, x, size)
+        mask = extract_tile(full_mask, y, x, size)
         mask = (mask > 127).astype(np.float32)
 
         if self.augment:

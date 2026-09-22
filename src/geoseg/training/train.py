@@ -32,6 +32,9 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    # Third-party HTTP clients log every request at INFO (e.g. pretrained weight downloads).
+    for noisy in ("httpx", "httpcore", "huggingface_hub"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     cfg = load_config(args.config, args.overrides)
     summary = fit(cfg)
     print(json.dumps(summary, indent=2))

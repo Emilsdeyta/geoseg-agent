@@ -46,3 +46,27 @@ def test_augmentation_keeps_shapes_and_mask_values(tmp_path: Path) -> None:
 def test_missing_directory_raises(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         ChangeDetectionDataset(tmp_path, "train")
+
+
+def test_cache_gives_identical_samples(tmp_path: Path) -> None:
+    _make_split(tmp_path, "train")
+    plain = ChangeDetectionDataset(tmp_path, "train", tile_size=128)
+    cached = ChangeDetectionDataset(tmp_path, "train", tile_size=128, cache=True)
+    assert len(plain) == len(cached)
+    for i in range(len(plain)):
+        for key in ("image_a", "image_b", "mask"):
+            assert torch.equal(plain[i][key], cached[i][key])
+
+
+def test_augmentation_does_not_corrupt_the_cache(tmp_path: Path) -> None:
+    """Tiles are views of the cached arrays; augmenting must never write into them."""
+    _make_split(tmp_path, "train")
+    cached = ChangeDetectionDataset(tmp_path, "train", tile_size=128, augment=True, cache=True)
+    for _ in range(3):
+        for i in range(len(cached)):
+            cached[i]
+    cached.augment = False
+    plain = ChangeDetectionDataset(tmp_path, "train", tile_size=128)
+    for i in range(len(plain)):
+        for key in ("image_a", "image_b", "mask"):
+            assert torch.equal(plain[i][key], cached[i][key])

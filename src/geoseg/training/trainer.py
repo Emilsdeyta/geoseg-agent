@@ -47,9 +47,11 @@ def build_dataloaders(
     """Train loader (shuffled, augmented) and val loader (ordered, no augmentation)."""
     data, train = cfg.data, cfg.train
     train_ds = ChangeDetectionDataset(
-        data.root, "train", data.tile_size, data.overlap, augment=True
+        data.root, "train", data.tile_size, data.overlap, augment=True, cache=data.cache
     )
-    val_ds = ChangeDetectionDataset(data.root, "val", data.tile_size, 0, augment=False)
+    val_ds = ChangeDetectionDataset(
+        data.root, "val", data.tile_size, 0, augment=False, cache=data.cache
+    )
     generator = torch.Generator().manual_seed(cfg.seed)
     common: dict[str, Any] = {
         "batch_size": train.batch_size,

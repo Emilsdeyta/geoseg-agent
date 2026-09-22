@@ -25,6 +25,7 @@ class DataConfig(_Section):
     tile_size: int = Field(default=256, gt=0)
     overlap: int = Field(default=0, ge=0)
     num_workers: int = Field(default=2, ge=0)
+    cache: bool = False  # keep decoded images in RAM: much faster, ~3.5 GB for LEVIR-CD
 
 
 class ModelConfig(_Section):
