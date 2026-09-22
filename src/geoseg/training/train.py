@@ -3,6 +3,9 @@
     python -m geoseg.training.train --config configs/default.yaml
     python -m geoseg.training.train --config configs/default.yaml \\
         --set train.epochs=2 data.root=/kaggle/input/levir-cd
+
+    # continue an interrupted run (auto = resume from <output_dir>/last.pt if present)
+    python -m geoseg.training.train --config configs/default.yaml --resume auto
 """
 
 from __future__ import annotations
@@ -27,6 +30,12 @@ def main(argv: list[str] | None = None) -> int:
         metavar="KEY=VALUE",
         help="override config values, e.g. train.epochs=5 data.num_workers=0",
     )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        help="'auto' to resume from <output_dir>/last.pt if it exists, "
+        "or an explicit checkpoint path. Default: start fresh.",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -36,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     for noisy in ("httpx", "httpcore", "huggingface_hub"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     cfg = load_config(args.config, args.overrides)
-    summary = fit(cfg)
+    summary = fit(cfg, resume=args.resume)
     print(json.dumps(summary, indent=2))
     return 0
 

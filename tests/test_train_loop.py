@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,72 @@ def test_limit_batches_and_early_stopping(synthetic_root: Path, tmp_path: Path) 
     cfg.train.limit_batches = 1
     summary = fit(cfg)
     assert summary["epochs_run"] < 20  # patience=1 stops long before 20 epochs
+
+
+def test_resume_auto_continues_history_and_epochs(synthetic_root: Path, tmp_path: Path) -> None:
+    out = tmp_path / "run"
+    first = fit(_tiny_config(synthetic_root, out, epochs=2))
+    assert first["epochs_run"] == 2
+
+    cfg = _tiny_config(synthetic_root, out, epochs=4)
+    second = fit(cfg, resume="auto")
+
+    assert second["epochs_run"] == 4  # 2 already done + 2 more, not restarted from 0
+    history = json.loads((out / "history.json").read_text())
+    assert [row["epoch"] for row in history] == [1.0, 2.0, 3.0, 4.0]
+
+
+def test_resume_auto_without_checkpoint_starts_fresh(synthetic_root: Path, tmp_path: Path) -> None:
+    out = tmp_path / "run"  # nothing written here yet
+    summary = fit(_tiny_config(synthetic_root, out, epochs=1), resume="auto")
+    assert summary["epochs_run"] == 1
+
+
+def test_resume_explicit_checkpoint_path(synthetic_root: Path, tmp_path: Path) -> None:
+    out = tmp_path / "run"
+    fit(_tiny_config(synthetic_root, out, epochs=1))
+    checkpoint = out / "last.pt"
+
+    resumed_out = tmp_path / "resumed"
+    resumed_out.mkdir()
+    # Continuing into a *different* output_dir with an explicit checkpoint path still
+    # picks up epoch/optimizer/scaler state, it just has no prior history.json to extend.
+    cfg = _tiny_config(synthetic_root, resumed_out, epochs=2)
+    summary = fit(cfg, resume=str(checkpoint))
+
+    history = json.loads((resumed_out / "history.json").read_text())
+    assert [row["epoch"] for row in history] == [2.0]  # only epoch 2 ran here
+    assert summary["epochs_run"] == 1
+
+
+def test_resume_missing_explicit_checkpoint_raises(synthetic_root: Path, tmp_path: Path) -> None:
+    cfg = _tiny_config(synthetic_root, tmp_path / "run", epochs=1)
+    with pytest.raises(FileNotFoundError):
+        fit(cfg, resume=str(tmp_path / "nope.pt"))
+
+
+def test_cli_resume_flag(synthetic_root: Path, tmp_path: Path) -> None:
+    from geoseg.training.train import main
+
+    default_config = Path(__file__).resolve().parents[1] / "configs" / "default.yaml"
+    out = tmp_path / "cli_run"
+    base_args = [
+        "--config",
+        str(default_config),
+        "--set",
+        f"data.root={synthetic_root}",
+        "data.tile_size=64",
+        "data.num_workers=0",
+        "model.encoder=resnet18",
+        "model.encoder_weights=null",
+        "train.batch_size=4",
+        "train.amp=false",
+        f"logging.output_dir={out}",
+    ]
+    assert main([*base_args, "train.epochs=1"]) == 0
+    assert main([*base_args, "train.epochs=2", "--resume", "auto"]) == 0
+    history = json.loads((out / "history.json").read_text())
+    assert [row["epoch"] for row in history] == [1.0, 2.0]
 
 
 def test_cli_runs_with_overrides(synthetic_root: Path, tmp_path: Path) -> None:

@@ -138,22 +138,106 @@ def evaluate(
 
 
 def _save_checkpoint(
-    path: Path, model: nn.Module, cfg: Config, epoch: int, val_metrics: dict[str, float]
+    path: Path,
+    model: nn.Module,
+    cfg: Config,
+    epoch: int,
+    val_metrics: dict[str, float],
+    *,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler,
+    scaler: torch.amp.GradScaler,
+    best_f1: float,
+    best_epoch: int,
+    epochs_without_improvement: int,
 ) -> None:
+    """Save a full checkpoint: model weights plus everything needed to resume training.
+
+    ``model``/``config``/``epoch``/``val`` are also used by callers that only want the
+    trained weights (e.g. inference); the rest is resume-only bookkeeping.
+    """
     payload = {
         "model": model.state_dict(),
         "config": cfg.model_dump(),
         "epoch": epoch,
         "val": val_metrics,
+        "optimizer": optimizer.state_dict(),
+        "scheduler": scheduler.state_dict(),
+        "scaler": scaler.state_dict(),
+        "best_f1": best_f1,
+        "best_epoch": best_epoch,
+        "epochs_without_improvement": epochs_without_improvement,
     }
     torch.save(payload, path)
 
 
-def fit(cfg: Config) -> dict[str, Any]:
+def _resolve_resume_path(resume: str | Path | None, output_dir: Path) -> Path | None:
+    """``None``/``"none"`` -> no resume. ``"auto"`` -> ``output_dir/last.pt`` if it exists.
+
+    Anything else is treated as an explicit checkpoint path (must exist).
+    """
+    if resume is None or resume == "none":
+        return None
+    if resume == "auto":
+        candidate = output_dir / "last.pt"
+        return candidate if candidate.is_file() else None
+    path = Path(resume)
+    if not path.is_file():
+        raise FileNotFoundError(f"--resume checkpoint not found: {path}")
+    return path
+
+
+def _load_resume_state(
+    path: Path,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler,
+    scaler: torch.amp.GradScaler,
+    device: torch.device,
+    output_dir: Path,
+) -> tuple[int, float, int, int, list[dict[str, float]]]:
+    """Restore model/optimizer/scheduler/scaler from ``path``.
+
+    Returns ``(start_epoch, best_f1, best_epoch, epochs_without_improvement, history)``.
+    Checkpoints saved before resume support lack the extra keys; those are filled with
+    safe defaults and a warning is logged (only the model weights carry over cleanly).
+    """
+    checkpoint = torch.load(path, map_location=device)
+    model.load_state_dict(checkpoint["model"])
+    missing = [k for k in ("optimizer", "scheduler", "scaler") if k not in checkpoint]
+    if missing:
+        logger.warning(
+            "Checkpoint %s has no %s (older format): resuming weights only, "
+            "optimizer/scheduler state restarts fresh.",
+            path,
+            ", ".join(missing),
+        )
+    else:
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        scheduler.load_state_dict(checkpoint["scheduler"])
+        scaler.load_state_dict(checkpoint["scaler"])
+
+    history_path = output_dir / "history.json"
+    history = json.loads(history_path.read_text()) if history_path.is_file() else []
+
+    start_epoch = int(checkpoint["epoch"]) + 1
+    best_f1 = float(checkpoint.get("best_f1", checkpoint.get("val", {}).get("f1", -1.0)))
+    best_epoch = int(checkpoint.get("best_epoch", checkpoint["epoch"]))
+    epochs_without_improvement = int(checkpoint.get("epochs_without_improvement", 0))
+    logger.info("Resuming from %s: starting at epoch %d", path, start_epoch)
+    return start_epoch, best_f1, best_epoch, epochs_without_improvement, history
+
+
+def fit(cfg: Config, resume: str | Path | None = None) -> dict[str, Any]:
     """Train according to ``cfg``; returns a summary of the best epoch (by val F1).
 
     Writes to ``cfg.logging.output_dir``: ``config.yaml``, ``history.json`` (updated every
     epoch), ``last.pt`` and ``best.pt`` (best validation F1).
+
+    ``resume``: ``None``/``"none"`` starts fresh (default). ``"auto"`` continues from
+    ``output_dir/last.pt`` if it exists, else starts fresh. Any other value is treated as
+    an explicit checkpoint path. Resuming restores model, optimizer, scheduler, AMP
+    scaler, early-stopping counters and prior history, then continues from the next epoch.
     """
     seed_everything(cfg.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -183,14 +267,37 @@ def fit(cfg: Config) -> dict[str, Any]:
         len(val_loader.dataset),  # type: ignore[arg-type]
     )
 
-    tracker = make_tracker(cfg, output_dir)
-    tracker.log_params(flatten(cfg.model_dump()))
+    resume_path = _resolve_resume_path(resume, output_dir)
     history: list[dict[str, float]] = []
     best_f1, best_epoch, best_val = -1.0, 0, {}
     epochs_without_improvement = 0
+    start_epoch = 1
+    if resume_path is not None:
+        start_epoch, best_f1, best_epoch, epochs_without_improvement, history = _load_resume_state(
+            resume_path, model, optimizer, scheduler, scaler, device, output_dir
+        )
+        if history:
+            best_val = next(
+                (
+                    {k[len("val_") :]: v for k, v in row.items() if k.startswith("val_")}
+                    for row in history
+                    if int(row["epoch"]) == best_epoch
+                ),
+                {},
+            )
+
+    tracker = make_tracker(cfg, output_dir)
+    tracker.log_params(flatten(cfg.model_dump()))
+
+    if start_epoch > cfg.train.epochs:
+        logger.info(
+            "Resume epoch %d already >= configured epochs %d; nothing to do.",
+            start_epoch,
+            cfg.train.epochs,
+        )
 
     try:
-        for epoch in range(1, cfg.train.epochs + 1):
+        for epoch in range(start_epoch, cfg.train.epochs + 1):
             start = time.perf_counter()
             train_loss = train_one_epoch(
                 model,
@@ -235,18 +342,32 @@ def fit(cfg: Config) -> dict[str, Any]:
                 row["seconds"],
             )
 
-            _save_checkpoint(output_dir / "last.pt", model, cfg, epoch, val)
-            if val["f1"] > best_f1:
+            improved = val["f1"] > best_f1
+            if improved:
                 best_f1, best_epoch, best_val = val["f1"], epoch, val
                 epochs_without_improvement = 0
-                _save_checkpoint(output_dir / "best.pt", model, cfg, epoch, val)
             else:
                 epochs_without_improvement += 1
-                if cfg.train.patience and epochs_without_improvement >= cfg.train.patience:
-                    logger.info(
-                        "Early stopping: no val F1 improvement for %d epochs", epoch - best_epoch
-                    )
-                    break
+            checkpoint_kwargs: dict[str, Any] = {
+                "optimizer": optimizer,
+                "scheduler": scheduler,
+                "scaler": scaler,
+                "best_f1": best_f1,
+                "best_epoch": best_epoch,
+                "epochs_without_improvement": epochs_without_improvement,
+            }
+            # Bookkeeping (best_f1/epochs_without_improvement) is updated above BEFORE
+            # saving, so last.pt always reflects the state to resume from correctly.
+            _save_checkpoint(output_dir / "last.pt", model, cfg, epoch, val, **checkpoint_kwargs)
+            if improved:
+                _save_checkpoint(
+                    output_dir / "best.pt", model, cfg, epoch, val, **checkpoint_kwargs
+                )
+            elif cfg.train.patience and epochs_without_improvement >= cfg.train.patience:
+                logger.info(
+                    "Early stopping: no val F1 improvement for %d epochs", epoch - best_epoch
+                )
+                break
         tracker.log_artifact(output_dir / "config.yaml")
         tracker.log_artifact(output_dir / "history.json")
     finally:
