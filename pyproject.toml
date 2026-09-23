@@ -20,7 +20,7 @@ dependencies = [
 # torch CUDA versiyasina gore ayrica qurasdirilir: https://pytorch.org/get-started/locally/
 ml = ["torch>=2.3", "torchvision", "segmentation-models-pytorch", "transformers", "albumentations", "mlflow"]
 geo = ["rasterio", "geopandas", "shapely", "pyproj", "scikit-image"]
-api = ["fastapi", "uvicorn[standard]", "httpx"]
+api = ["fastapi", "uvicorn[standard]", "httpx", "python-multipart"]
 agent = ["anthropic"]
 export = ["onnx", "onnxruntime"]
 dev = ["pytest", "pytest-cov", "ruff", "mypy", "pre-commit", "types-PyYAML"]
