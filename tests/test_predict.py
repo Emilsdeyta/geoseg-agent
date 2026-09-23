@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-import torch
 
-from geoseg.inference.predict import predict_full_image
+torch = pytest.importorskip("torch")
+
+from geoseg.inference.predict import predict_full_image  # noqa: E402
 
 
 class _ConstantLogitModel(torch.nn.Module):
