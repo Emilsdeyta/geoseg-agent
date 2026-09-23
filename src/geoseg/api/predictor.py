@@ -47,6 +47,9 @@ class TorchPredictor:
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         checkpoint = torch.load(checkpoint_path, map_location=self._device)
         cfg = load_checkpoint_config(checkpoint, None)
+        # The checkpoint already holds the trained weights. Skip the ImageNet
+        # download so the server also starts offline (e.g. inside Docker).
+        cfg.model.encoder_weights = None
         model = build_model(cfg).to(self._device)
         model.load_state_dict(checkpoint["model"])
         model.eval()
