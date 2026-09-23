@@ -19,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 # torch CUDA versiyasina gore ayrica qurasdirilir: https://pytorch.org/get-started/locally/
 ml = ["torch>=2.3", "torchvision", "segmentation-models-pytorch", "transformers", "albumentations", "mlflow"]
-geo = ["rasterio", "geopandas", "shapely", "pyproj"]
+geo = ["rasterio", "geopandas", "shapely", "pyproj", "scikit-image"]
 api = ["fastapi", "uvicorn[standard]", "httpx"]
 agent = ["anthropic"]
 export = ["onnx", "onnxruntime"]
