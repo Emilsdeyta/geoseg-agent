@@ -40,3 +40,6 @@ outputs/
 .DS_Store
 Thumbs.db
 *.zip
+overlay_test_1.png
+test_result.geojson
+resp.json

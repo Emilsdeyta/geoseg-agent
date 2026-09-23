@@ -44,3 +44,6 @@ markers = ["gpu: GPU teleb edir", "slow: yavas test"]
 [tool.mypy]
 ignore_missing_imports = true
 check_untyped_defs = true
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_api.py" = ["E402"]
